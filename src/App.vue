@@ -4,9 +4,11 @@ import MarkdownEditor from './views/MarkdownEditor.vue'
 </script>
 
 <template>
-  <div id="app">
-    <router-view />
-  </div>
+  <router-view v-slot="{ Component }">
+    <keep-alive>
+      <component :is="Component" />
+    </keep-alive>
+  </router-view>
 </template>
 
 <style>

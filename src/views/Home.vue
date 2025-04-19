@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { marked } from 'marked'  // markedがインポートされていないようなので追加
 
 const router = useRouter()
 const documents = ref([])
@@ -39,7 +40,8 @@ const createNewDocument = () => {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     group: 'None',
-    tags: []
+    tags: [],
+    isNew: true  // 新規作成フラグを追加
   }
   localStorage.setItem(`document_meta_${id}`, JSON.stringify(meta))
   localStorage.setItem(`document_content_${id}`, '# Untitled Document\n\nStart typing here...')

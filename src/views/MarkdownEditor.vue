@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { debounce } from 'lodash-es'
 import { marked } from 'marked'
@@ -178,26 +178,87 @@ watch([content, title, tags, group], () => {
   autoSave()
 }, { deep: true })
 
+// 編集されたかどうかの状態を追跡
+const isNewDocument = ref(false)
+const hasUnsavedChanges = ref(false)
+const originalContent = ref('')
+const originalTitle = ref('')
+const originalGroup = ref('')
+const originalTags = ref([])
+
+// 変更監視
+watch([content, title, group, tags], () => {
+  // 元の内容と比較して変更があるかチェック
+  hasUnsavedChanges.value = 
+    content.value !== originalContent.value ||
+    title.value !== originalTitle.value ||
+    group.value !== originalGroup.value ||
+    JSON.stringify(tags.value) !== JSON.stringify(originalTags.value)
+  
+  // 自動保存処理はそのまま
+  autoSave()
+}, { deep: true })
+
+// ホームに戻る前に確認
+const goToHome = () => {
+  if (hasUnsavedChanges.value) {
+    const action = isNewDocument.value ? 
+      '新規ドキュメントを破棄' : 
+      '変更を保存'
+
+    if (confirm(`変更が保存されていません。${action}しますか？`)) {
+      if (isNewDocument.value) {
+        // 新規ドキュメントの場合、LocalStorageから削除
+        const id = route.params.id
+        localStorage.removeItem(`document_meta_${id}`)
+        localStorage.removeItem(`document_content_${id}`)
+      } else {
+        // 既存ドキュメントの場合、保存
+        saveDocument()
+      }
+      router.push('/')
+    }
+  } else {
+    // 変更がない場合はそのまま戻る
+    router.push('/')
+  }
+}
+
 // ドキュメントの読み込み
 onMounted(() => {
   const id = route.params.id
   
   // コンテンツの読み込み
   const savedContent = localStorage.getItem(`document_content_${id}`)
+  const savedMeta = localStorage.getItem(`document_meta_${id}`)
+  
+  // 新規作成から直後の状態かどうかを判定
+  const isNewlyCreated = savedContent && savedMeta && 
+    JSON.parse(savedMeta).title === 'Untitled Document' &&
+    savedContent.includes('# Untitled Document\n\nStart typing here...')
+  
+  isNewDocument.value = isNewlyCreated
+  
   if (savedContent) {
     content.value = savedContent
+    originalContent.value = savedContent
   } else {
     content.value = '# Untitled Document\n\nStart typing here...'
+    originalContent.value = content.value
   }
   
   // メタデータの読み込み
-  const savedMeta = localStorage.getItem(`document_meta_${id}`)
   if (savedMeta) {
     try {
       const meta = JSON.parse(savedMeta)
       title.value = meta.title || 'Untitled Document'
+      originalTitle.value = title.value
+      
       tags.value = meta.tags || []
+      originalTags.value = [...tags.value]
+      
       group.value = meta.group || 'None'
+      originalGroup.value = group.value
       
       // グループが存在しなければ追加
       if (meta.group && !availableGroups.value.includes(meta.group)) {
@@ -207,7 +268,58 @@ onMounted(() => {
       console.error('Error parsing document metadata', e)
     }
   }
+
+  // 初期状態では未保存変更なし
+  hasUnsavedChanges.value = false
+
+  // ブラウザの戻るボタン対策
+  window.addEventListener('beforeunload', handleBeforeUnload)
 })
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+})
+
+// ページ離脱時の確認
+const handleBeforeUnload = (e) => {
+  if (hasUnsavedChanges.value) {
+    const message = '変更が保存されていません。ページを離れますか？'
+    e.returnValue = message
+    return message
+  }
+}
+
+// Vue Routerのナビゲーションガード
+const onBeforeRouteLeave = (to, from, next) => {
+  if (hasUnsavedChanges.value) {
+    const action = isNewDocument.value ? 
+      '新規ドキュメントを破棄' : 
+      '変更を保存して移動'
+      
+    if (confirm(`変更が保存されていません。${action}しますか？`)) {
+      if (isNewDocument.value) {
+        // 新規ドキュメントの場合、LocalStorageから削除
+        const id = route.params.id
+        localStorage.removeItem(`document_meta_${id}`)
+        localStorage.removeItem(`document_content_${id}`)
+        next()
+      } else {
+        // 既存ドキュメントの場合、保存してから移動
+        saveDocument()
+        next()
+      }
+    } else {
+      // キャンセルした場合は移動しない
+      next(false)
+    }
+  } else {
+    next()
+  }
+}
+
+// Vue Router v4でのナビゲーションガード設定
+import { onBeforeRouteLeave as vueRouterBeforeLeave } from 'vue-router'
+vueRouterBeforeLeave(onBeforeRouteLeave)
 
 // ホームに戻る
 const goToHome = () => {
@@ -349,6 +461,7 @@ const viewDocument = () => {
     <header class="editor-header">
       <div class="back-button" @click="goToHome">
         <span>&larr;</span> ホームに戻る
+        <span v-if="hasUnsavedChanges" class="unsaved-indicator">*</span>
       </div>
       
       <div class="document-info">
@@ -429,10 +542,19 @@ const viewDocument = () => {
   padding: 5px 10px;
   border-radius: 4px;
   transition: background-color 0.3s;
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .back-button:hover {
   background-color: #f0f0f0;
+}
+
+.unsaved-indicator {
+  color: #f44336;
+  font-weight: bold;
+  font-size: 18px;
 }
 
 .document-info {
