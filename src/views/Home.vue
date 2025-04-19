@@ -223,6 +223,137 @@ const importMultipleDocuments = (event) => {
   reader.readAsText(file)
 }
 
+// ドキュメントを閲覧モードで開く
+const viewDocument = (id, event) => {
+  event.stopPropagation()
+  router.push(`/view/${id}`)
+}
+
+// HTMLとしてエクスポート
+const exportDocumentAsHTML = (id, event) => {
+  event.stopPropagation()
+  try {
+    const meta = JSON.parse(localStorage.getItem(`document_meta_${id}`))
+    const content = localStorage.getItem(`document_content_${id}`)
+    
+    // マークダウンをHTMLに変換
+    const htmlContent = marked(content)
+    
+    // HTMLドキュメントを作成
+    const htmlDocument = `
+      <!DOCTYPE html>
+      <html lang="ja">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>${meta.title}</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+          }
+          h1, h2, h3, h4, h5, h6 {
+            margin-top: 24px;
+            margin-bottom: 16px;
+            font-weight: 600;
+            line-height: 1.25;
+          }
+          h1 { font-size: 2em; border-bottom: 1px solid #eaecef; padding-bottom: .3em; }
+          h2 { font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: .3em; }
+          code {
+            background-color: rgba(27,31,35,.05);
+            border-radius: 3px;
+            font-family: SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace;
+            padding: .2em .4em;
+            font-size: 85%;
+          }
+          pre {
+            background-color: #f6f8fa;
+            border-radius: 3px;
+            padding: 16px;
+            overflow: auto;
+            line-height: 1.45;
+          }
+          pre code {
+            background-color: transparent;
+            padding: 0;
+            font-size: 100%;
+          }
+          blockquote {
+            border-left: .25em solid #dfe2e5;
+            padding: 0 1em;
+            color: #6a737d;
+            margin: 0 0 16px;
+          }
+          table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 16px;
+          }
+          table th, table td {
+            padding: 6px 13px;
+            border: 1px solid #dfe2e5;
+          }
+          table tr {
+            background-color: #fff;
+            border-top: 1px solid #c6cbd1;
+          }
+          table tr:nth-child(2n) {
+            background-color: #f6f8fa;
+          }
+          img {
+            max-width: 100%;
+          }
+          .meta-info {
+            margin-bottom: 20px;
+            font-size: 0.9em;
+            color: #666;
+          }
+          .tag {
+            display: inline-block;
+            background-color: #e0f7fa;
+            color: #00838f;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-right: 5px;
+          }
+        </style>
+      </head>
+      <body>
+        <h1>${meta.title}</h1>
+        <div class="meta-info">
+          <p>Group: ${meta.group || 'None'}</p>
+          <p>Last Updated: ${new Date(meta.updatedAt).toLocaleString()}</p>
+          <p>Tags: ${meta.tags && meta.tags.length > 0 ? 
+            meta.tags.map(tag => `<span class="tag">${tag}</span>`).join(' ') : 
+            'None'}</p>
+        </div>
+        <hr>
+        <div class="content">
+          ${htmlContent}
+        </div>
+      </body>
+      </html>
+    `
+    
+    // HTMLファイルとしてエクスポート
+    const blob = new Blob([htmlDocument], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${meta.title.replace(/\s+/g, '_')}.html`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    alert('HTMLエクスポート中にエラーが発生しました: ' + e.message)
+  }
+}
+
 onMounted(() => {
   loadDocuments()
   loadGroups()
@@ -300,10 +431,22 @@ onMounted(() => {
         </div>
         <div class="doc-actions">
           <button 
+            @click="viewDocument(doc.id, $event)"
+            class="view-btn"
+          >
+            閲覧
+          </button>
+          <button 
+            @click="exportDocumentAsHTML(doc.id, $event)"
+            class="html-btn"
+          >
+            HTMLエクスポート
+          </button>
+          <button 
             @click="exportDocument(doc.id, $event)"
             class="export-doc-btn"
           >
-            エクスポート
+            JSONエクスポート
           </button>
           <button 
             @click="deleteDocument(doc.id, $event)"
@@ -463,7 +606,7 @@ h1 {
   gap: 5px;
 }
 
-.delete-btn, .export-doc-btn {
+.delete-btn, .export-doc-btn, .view-btn, .html-btn {
   border: none;
   border-radius: 4px;
   padding: 5px 10px;
@@ -471,6 +614,16 @@ h1 {
   font-size: 12px;
   opacity: 0.8;
   transition: opacity 0.3s;
+}
+
+.view-btn {
+  background-color: #673AB7;
+  color: white;
+}
+
+.html-btn {
+  background-color: #FF9800;
+  color: white;
 }
 
 .export-doc-btn {
@@ -483,7 +636,10 @@ h1 {
   color: white;
 }
 
-.document-item:hover .delete-btn, .document-item:hover .export-doc-btn {
+.document-item:hover .delete-btn, 
+.document-item:hover .export-doc-btn, 
+.document-item:hover .view-btn,
+.document-item:hover .html-btn {
   opacity: 1;
 }
 

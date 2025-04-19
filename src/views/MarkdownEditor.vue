@@ -213,6 +213,135 @@ onMounted(() => {
 const goToHome = () => {
   router.push('/')
 }
+
+// HTMLファイルにエクスポート
+const exportToHTML = () => {
+  const id = route.params.id
+  
+  try {
+    // HTMLドキュメントを作成
+    const htmlDocument = `
+      <!DOCTYPE html>
+      <html lang="ja">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>${title.value}</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+          }
+          h1, h2, h3, h4, h5, h6 {
+            margin-top: 24px;
+            margin-bottom: 16px;
+            font-weight: 600;
+            line-height: 1.25;
+          }
+          h1 { font-size: 2em; border-bottom: 1px solid #eaecef; padding-bottom: .3em; }
+          h2 { font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: .3em; }
+          code {
+            background-color: rgba(27,31,35,.05);
+            border-radius: 3px;
+            font-family: SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace;
+            padding: .2em .4em;
+            font-size: 85%;
+          }
+          pre {
+            background-color: #f6f8fa;
+            border-radius: 3px;
+            padding: 16px;
+            overflow: auto;
+            line-height: 1.45;
+          }
+          pre code {
+            background-color: transparent;
+            padding: 0;
+            font-size: 100%;
+          }
+          blockquote {
+            border-left: .25em solid #dfe2e5;
+            padding: 0 1em;
+            color: #6a737d;
+            margin: 0 0 16px;
+          }
+          table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 16px;
+          }
+          table th, table td {
+            padding: 6px 13px;
+            border: 1px solid #dfe2e5;
+          }
+          table tr {
+            background-color: #fff;
+            border-top: 1px solid #c6cbd1;
+          }
+          table tr:nth-child(2n) {
+            background-color: #f6f8fa;
+          }
+          img {
+            max-width: 100%;
+          }
+          .meta-info {
+            margin-bottom: 20px;
+            font-size: 0.9em;
+            color: #666;
+          }
+          .tag {
+            display: inline-block;
+            background-color: #e0f7fa;
+            color: #00838f;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-right: 5px;
+          }
+        </style>
+      </head>
+      <body>
+        <h1>${title.value}</h1>
+        <div class="meta-info">
+          <p>Group: ${group.value}</p>
+          <p>Last Updated: ${new Date().toLocaleString()}</p>
+          <p>Tags: ${tags.value.length > 0 ? 
+            tags.value.map(tag => `<span class="tag">${tag}</span>`).join(' ') : 
+            'None'}</p>
+        </div>
+        <hr>
+        <div class="content">
+          ${renderedContent.value}
+        </div>
+      </body>
+      </html>
+    `
+    
+    // HTMLファイルとしてエクスポート
+    const blob = new Blob([htmlDocument], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${title.value.replace(/\s+/g, '_')}.html`
+    a.click()
+    URL.revokeObjectURL(url)
+    
+    alert('HTMLファイルとしてエクスポートしました')
+  } catch (e) {
+    alert('エクスポート中にエラーが発生しました: ' + e.message)
+  }
+}
+
+// プレビューモードで開く
+const viewDocument = () => {
+  const id = route.params.id
+  saveDocument() // 現在の状態を保存してから閲覧モードに移動
+  router.push(`/view/${id}`)
+}
 </script>
 
 <template>
@@ -257,11 +386,9 @@ const goToHome = () => {
       
       <div class="actions">
         <button @click="saveDocument" class="save-btn">保存</button>
+        <button @click="viewDocument" class="view-btn">閲覧</button>
+        <button @click="exportToHTML" class="html-btn">HTMLエクスポート</button>
         <button @click="exportToJson" class="export-btn">JSONエクスポート</button>
-        <label class="import-btn">
-          <input type="file" accept=".json" @change="importFromJson" class="hidden-input">
-          JSONインポート
-        </label>
       </div>
     </header>
     
@@ -403,7 +530,7 @@ const goToHome = () => {
   gap: 10px;
 }
 
-.save-btn, .export-btn, .import-btn {
+.save-btn, .export-btn, .html-btn, .view-btn {
   border: none;
   padding: 8px 16px;
   border-radius: 4px;
@@ -421,13 +548,31 @@ const goToHome = () => {
   background-color: #45a049;
 }
 
-.export-btn, .import-btn {
+.export-btn {
   background-color: #2196F3;
   color: white;
 }
 
-.export-btn:hover, .import-btn:hover {
+.export-btn:hover {
   background-color: #0b7dda;
+}
+
+.html-btn {
+  background-color: #FF9800;
+  color: white;
+}
+
+.html-btn:hover {
+  background-color: #e68900;
+}
+
+.view-btn {
+  background-color: #673AB7;
+  color: white;
+}
+
+.view-btn:hover {
+  background-color: #5e35a7;
 }
 
 .hidden-input {
