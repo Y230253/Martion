@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github.css'
+import { watch } from 'vue'
 
 // マークダウンレンダリングの設定
 marked.setOptions({
@@ -178,6 +179,14 @@ const exportAsHTML = () => {
     alert('HTMLエクスポート中にエラーが発生しました: ' + e.message)
   }
 }
+
+// ルート監視でドキュメント更新 - 異なる方法で実装
+watch(() => route.params.id, (newId, oldId) => {
+  if (newId === oldId && newId) {
+    // 同じドキュメントに戻ってきた場合は再読み込み
+    loadDocument()
+  }
+})
 
 // 編集モードに切り替え
 const editDocument = () => {

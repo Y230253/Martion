@@ -1,6 +1,19 @@
 <script setup>
-import HelloWorld from './components/HelloWorld.vue'
-import MarkdownEditor from './views/MarkdownEditor.vue'
+// 未使用のインポートを削除
+// import HelloWorld from './components/HelloWorld.vue'
+// import MarkdownEditor from './views/MarkdownEditor.vue'
+import { watch } from 'vue'
+import { useRoute } from 'vue-router'
+
+// ルート変更監視
+const route = useRoute()
+watch(() => route.path, () => {
+  // ドキュメント一覧表示のためのフラグ設定
+  if (route.path === '/') {
+    // ホーム画面に戻ったときの処理
+    console.log('Returned to home, documents should be refreshed')
+  }
+}, { immediate: true })
 </script>
 
 <template>

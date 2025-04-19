@@ -63,7 +63,7 @@ const renderedContent = computed(() => {
 })
 
 // ドキュメントの保存
-const saveDocument = () => {
+const saveDocument = (navigateHome = false) => {
   const id = route.params.id
   
   // メタデータの保存
@@ -74,13 +74,26 @@ const saveDocument = () => {
       : new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     group: group.value,
-    tags: tags.value
+    tags: tags.value,
+    isNew: false // 保存したら新規フラグを外す
   }
   
   localStorage.setItem(`document_meta_${id}`, JSON.stringify(meta))
   localStorage.setItem(`document_content_${id}`, content.value)
   
-  alert('ドキュメントが保存されました')
+  // 保存後に状態を更新
+  hasUnsavedChanges.value = false
+  isNewDocument.value = false
+  originalContent.value = content.value
+  originalTitle.value = title.value
+  originalGroup.value = group.value
+  originalTags.value = [...tags.value]
+  
+  if (!navigateHome) {
+    alert('ドキュメントが保存されました')
+  } else {
+    router.push('/')
+  }
 }
 
 // JSONファイルに保存
@@ -159,18 +172,25 @@ const importFromJson = (event) => {
 
 // 自動保存（下書き）
 const autoSave = debounce(() => {
+  if (disableAutoSave.value) return
+
   const id = route.params.id
-  localStorage.setItem(`document_content_${id}`, content.value)
-  localStorage.setItem(`document_meta_${id}`, JSON.stringify({
-    title: title.value,
-    createdAt: localStorage.getItem(`document_meta_${id}`) 
-      ? JSON.parse(localStorage.getItem(`document_meta_${id}`)).createdAt 
-      : new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    group: group.value,
-    tags: tags.value
-  }))
-  console.log('Auto-saved document')
+  
+  // 新規作成文書ではない場合のみ自動保存
+  if (!isNewDocument.value) {
+    localStorage.setItem(`document_content_${id}`, content.value)
+    localStorage.setItem(`document_meta_${id}`, JSON.stringify({
+      title: title.value,
+      createdAt: localStorage.getItem(`document_meta_${id}`) 
+        ? JSON.parse(localStorage.getItem(`document_meta_${id}`)).createdAt 
+        : new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      group: group.value,
+      tags: tags.value,
+      isNew: false
+    }))
+    console.log('Auto-saved document')
+  }
 }, 2000)
 
 // 内容変更時に自動保存
@@ -186,6 +206,9 @@ const originalTitle = ref('')
 const originalGroup = ref('')
 const originalTags = ref([])
 
+// 自動保存を一時的に無効化するフラグ
+const disableAutoSave = ref(false)
+
 // 変更監視
 watch([content, title, group, tags], () => {
   // 元の内容と比較して変更があるかチェック
@@ -195,28 +218,33 @@ watch([content, title, group, tags], () => {
     group.value !== originalGroup.value ||
     JSON.stringify(tags.value) !== JSON.stringify(originalTags.value)
   
-  // 自動保存処理はそのまま
-  autoSave()
+  // 自動保存処理（無効化されていない場合のみ）
+  if (!disableAutoSave.value) {
+    autoSave()
+  }
 }, { deep: true })
 
 // ホームに戻る前に確認
 const goToHome = () => {
   if (hasUnsavedChanges.value) {
-    const action = isNewDocument.value ? 
-      '新規ドキュメントを破棄' : 
-      '変更を保存'
-
-    if (confirm(`変更が保存されていません。${action}しますか？`)) {
-      if (isNewDocument.value) {
-        // 新規ドキュメントの場合、LocalStorageから削除
-        const id = route.params.id
+    const id = route.params.id
+    
+    if (isNewDocument.value) {
+      // 新規ドキュメントの場合
+      if (confirm('新規ドキュメントが保存されていません。破棄しますか？')) {
+        // 自動保存を無効化して、LocalStorageから削除
+        disableAutoSave.value = true
         localStorage.removeItem(`document_meta_${id}`)
         localStorage.removeItem(`document_content_${id}`)
-      } else {
-        // 既存ドキュメントの場合、保存
-        saveDocument()
+        router.push('/')
       }
-      router.push('/')
+    } else {
+      // 既存ドキュメントの場合
+      if (confirm('変更が保存されていません。保存して戻りますか？')) {
+        // 自動保存を無効化して、明示的に保存してから戻る
+        disableAutoSave.value = true
+        saveDocument(true)  // 第2引数でホームに戻るフラグをtrueに
+      }
     }
   } else {
     // 変更がない場合はそのまま戻る
@@ -232,25 +260,14 @@ onMounted(() => {
   const savedContent = localStorage.getItem(`document_content_${id}`)
   const savedMeta = localStorage.getItem(`document_meta_${id}`)
   
-  // 新規作成から直後の状態かどうかを判定
-  const isNewlyCreated = savedContent && savedMeta && 
-    JSON.parse(savedMeta).title === 'Untitled Document' &&
-    savedContent.includes('# Untitled Document\n\nStart typing here...')
-  
-  isNewDocument.value = isNewlyCreated
-  
-  if (savedContent) {
-    content.value = savedContent
-    originalContent.value = savedContent
-  } else {
-    content.value = '# Untitled Document\n\nStart typing here...'
-    originalContent.value = content.value
-  }
-  
-  // メタデータの読み込み
-  if (savedMeta) {
-    try {
+  try {
+    // メタデータがある場合はパース
+    if (savedMeta) {
       const meta = JSON.parse(savedMeta)
+      
+      // 新規ドキュメントかどうかの判定
+      isNewDocument.value = meta.isNew === true
+      
       title.value = meta.title || 'Untitled Document'
       originalTitle.value = title.value
       
@@ -264,19 +281,40 @@ onMounted(() => {
       if (meta.group && !availableGroups.value.includes(meta.group)) {
         availableGroups.value.push(meta.group)
       }
-    } catch (e) {
-      console.error('Error parsing document metadata', e)
+    } else {
+      // メタデータがない場合は新規とみなす
+      isNewDocument.value = true
+      title.value = 'Untitled Document'
+      originalTitle.value = title.value
     }
+    
+    // コンテンツの設定
+    if (savedContent) {
+      content.value = savedContent
+      originalContent.value = savedContent
+    } else {
+      content.value = '# Untitled Document\n\nStart typing here...'
+      originalContent.value = content.value
+    }
+  } catch (e) {
+    console.error('Error loading document:', e)
+    // エラー時はデフォルト値を設定
+    isNewDocument.value = true
+    content.value = '# Untitled Document\n\nStart typing here...'
+    originalContent.value = content.value
+    title.value = 'Untitled Document'
+    originalTitle.value = title.value
   }
 
   // 初期状態では未保存変更なし
   hasUnsavedChanges.value = false
-
+  
   // ブラウザの戻るボタン対策
   window.addEventListener('beforeunload', handleBeforeUnload)
 })
 
 onBeforeUnmount(() => {
+  // イベントリスナーのクリーンアップ
   window.removeEventListener('beforeunload', handleBeforeUnload)
 })
 
@@ -289,42 +327,39 @@ const handleBeforeUnload = (e) => {
   }
 }
 
-// Vue Routerのナビゲーションガード
-const onBeforeRouteLeave = (to, from, next) => {
-  if (hasUnsavedChanges.value) {
-    const action = isNewDocument.value ? 
-      '新規ドキュメントを破棄' : 
-      '変更を保存して移動'
-      
-    if (confirm(`変更が保存されていません。${action}しますか？`)) {
+// カスタムルーターナビゲーションガード
+router.beforeEach((to, from, next) => {
+  // 現在のページから離れようとしている場合
+  if (from.path.includes('/editor/') && from.params.id === route.params.id) {
+    // エディタページから離れようとしている時
+    if (hasUnsavedChanges.value) {
       if (isNewDocument.value) {
-        // 新規ドキュメントの場合、LocalStorageから削除
-        const id = route.params.id
-        localStorage.removeItem(`document_meta_${id}`)
-        localStorage.removeItem(`document_content_${id}`)
-        next()
+        if (confirm('新規ドキュメントが保存されていません。破棄しますか？')) {
+          // 新規ドキュメントの場合、LocalStorageから削除
+          const id = route.params.id
+          localStorage.removeItem(`document_meta_${id}`)
+          localStorage.removeItem(`document_content_${id}`)
+          next()
+        } else {
+          next(false)
+        }
       } else {
-        // 既存ドキュメントの場合、保存してから移動
-        saveDocument()
-        next()
+        if (confirm('変更が保存されていません。保存して移動しますか？')) {
+          // 既存ドキュメントの場合、保存してから移動
+          disableAutoSave.value = true
+          saveDocument(false)
+          next()
+        } else {
+          next(false)
+        }
       }
     } else {
-      // キャンセルした場合は移動しない
-      next(false)
+      next()
     }
   } else {
     next()
   }
-}
-
-// Vue Router v4でのナビゲーションガード設定
-import { onBeforeRouteLeave as vueRouterBeforeLeave } from 'vue-router'
-vueRouterBeforeLeave(onBeforeRouteLeave)
-
-// ホームに戻る
-const goToHome = () => {
-  router.push('/')
-}
+})
 
 // HTMLファイルにエクスポート
 const exportToHTML = () => {

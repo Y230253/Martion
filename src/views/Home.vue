@@ -1,9 +1,10 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { marked } from 'marked'  // markedがインポートされていないようなので追加
+import { ref, computed, onMounted, nextTick } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { marked } from 'marked'
 
 const router = useRouter()
+const route = useRoute()
 const documents = ref([])
 
 // ドキュメントの読み込み
@@ -41,7 +42,7 @@ const createNewDocument = () => {
     updatedAt: new Date().toISOString(),
     group: 'None',
     tags: [],
-    isNew: true  // 新規作成フラグを追加
+    isNew: true  // 新規作成フラグを明示的に設定
   }
   localStorage.setItem(`document_meta_${id}`, JSON.stringify(meta))
   localStorage.setItem(`document_content_${id}`, '# Untitled Document\n\nStart typing here...')
@@ -59,7 +60,7 @@ const deleteDocument = (id, event) => {
   if (confirm('このドキュメントを削除してもよろしいですか？')) {
     localStorage.removeItem(`document_meta_${id}`)
     localStorage.removeItem(`document_content_${id}`)
-    loadDocuments()
+    loadDocuments() // 削除後に再読み込み
   }
 }
 
@@ -356,9 +357,21 @@ const exportDocumentAsHTML = (id, event) => {
   }
 }
 
+// マウント時に読み込み
 onMounted(() => {
   loadDocuments()
   loadGroups()
+})
+
+// ルートの監視を追加してホーム画面に戻るたびにドキュメントを再読み込み
+import { watch } from 'vue'
+watch(() => route.path, (newPath) => {
+  if (newPath === '/') {
+    nextTick(() => {
+      loadDocuments()
+      loadGroups()
+    })
+  }
 })
 </script>
 
