@@ -83,6 +83,80 @@ const saveDocument = () => {
   alert('ドキュメントが保存されました')
 }
 
+// JSONファイルに保存
+const exportToJson = () => {
+  const id = route.params.id
+  
+  try {
+    // メタデータを取得または作成
+    let meta = {}
+    if (localStorage.getItem(`document_meta_${id}`)) {
+      meta = JSON.parse(localStorage.getItem(`document_meta_${id}`))
+    } else {
+      meta = {
+        title: title.value,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        group: group.value,
+        tags: tags.value
+      }
+    }
+    
+    // ドキュメントデータを作成
+    const documentData = {
+      meta: {
+        ...meta,
+        exportedAt: new Date().toISOString()
+      },
+      content: content.value
+    }
+    
+    // JSONとしてエクスポート
+    const blob = new Blob([JSON.stringify(documentData, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${meta.title.replace(/\s+/g, '_')}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    
+    alert('ドキュメントをJSONファイルにエクスポートしました')
+  } catch (e) {
+    alert('エクスポート中にエラーが発生しました: ' + e.message)
+  }
+}
+
+// JSONファイルからインポート
+const importFromJson = (event) => {
+  const file = event.target.files[0]
+  if (!file) return
+  
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result)
+      if (!data.meta || !data.content) {
+        alert('無効なドキュメント形式です')
+        return
+      }
+      
+      // 現在のドキュメントを更新
+      if (data.meta.title) title.value = data.meta.title
+      if (data.meta.group) group.value = data.meta.group
+      if (data.meta.tags) tags.value = data.meta.tags
+      content.value = data.content
+      
+      // 即時保存
+      saveDocument()
+      
+      alert('ドキュメントをインポートしました')
+    } catch (e) {
+      alert('インポート中にエラーが発生しました: ' + e.message)
+    }
+  }
+  reader.readAsText(file)
+}
+
 // 自動保存（下書き）
 const autoSave = debounce(() => {
   const id = route.params.id
@@ -183,6 +257,11 @@ const goToHome = () => {
       
       <div class="actions">
         <button @click="saveDocument" class="save-btn">保存</button>
+        <button @click="exportToJson" class="export-btn">JSONエクスポート</button>
+        <label class="import-btn">
+          <input type="file" accept=".json" @change="importFromJson" class="hidden-input">
+          JSONインポート
+        </label>
       </div>
     </header>
     
@@ -324,18 +403,35 @@ const goToHome = () => {
   gap: 10px;
 }
 
-.save-btn {
-  background-color: #4CAF50;
-  color: white;
+.save-btn, .export-btn, .import-btn {
   border: none;
   padding: 8px 16px;
   border-radius: 4px;
   cursor: pointer;
   transition: background-color 0.3s;
+  font-size: 14px;
+}
+
+.save-btn {
+  background-color: #4CAF50;
+  color: white;
 }
 
 .save-btn:hover {
   background-color: #45a049;
+}
+
+.export-btn, .import-btn {
+  background-color: #2196F3;
+  color: white;
+}
+
+.export-btn:hover, .import-btn:hover {
+  background-color: #0b7dda;
+}
+
+.hidden-input {
+  display: none;
 }
 
 .editor-layout {

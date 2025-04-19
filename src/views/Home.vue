@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -61,6 +61,60 @@ const deleteDocument = (id, event) => {
   }
 }
 
+// JSONファイルとしてエクスポート
+const exportDocument = (id, event) => {
+  event.stopPropagation()
+  try {
+    const meta = JSON.parse(localStorage.getItem(`document_meta_${id}`))
+    const content = localStorage.getItem(`document_content_${id}`)
+    
+    const documentData = {
+      meta,
+      content
+    }
+    
+    const blob = new Blob([JSON.stringify(documentData, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${meta.title.replace(/\s+/g, '_')}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    alert('ドキュメントのエクスポート中にエラーが発生しました: ' + e.message)
+  }
+}
+
+// JSONファイルからインポート
+const importDocument = (event) => {
+  const file = event.target.files[0]
+  if (!file) return
+  
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result)
+      if (!data.meta || !data.content) {
+        alert('無効なドキュメント形式です')
+        return
+      }
+      
+      const id = Date.now().toString()
+      localStorage.setItem(`document_meta_${id}`, JSON.stringify({
+        ...data.meta,
+        importedAt: new Date().toISOString()
+      }))
+      localStorage.setItem(`document_content_${id}`, data.content)
+      
+      alert('ドキュメントをインポートしました')
+      loadDocuments()
+    } catch (e) {
+      alert('ドキュメントの読み込み中にエラーが発生しました: ' + e.message)
+    }
+  }
+  reader.readAsText(file)
+}
+
 // フィルタリングのためのステート
 const filterText = ref('')
 const filterGroup = ref('All')
@@ -98,6 +152,77 @@ const filteredDocuments = computed(() => {
   })
 })
 
+// すべてのドキュメントをJSONとしてエクスポート
+const exportAllDocuments = () => {
+  try {
+    const allDocs = []
+    
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key.startsWith('document_meta_')) {
+        const id = key.replace('document_meta_', '')
+        const meta = JSON.parse(localStorage.getItem(key))
+        const content = localStorage.getItem(`document_content_${id}`)
+        
+        allDocs.push({
+          id,
+          meta,
+          content
+        })
+      }
+    }
+    
+    const blob = new Blob([JSON.stringify(allDocs, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `martion_all_documents_${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    
+    alert('すべてのドキュメントをエクスポートしました')
+  } catch (e) {
+    alert('エクスポート中にエラーが発生しました: ' + e.message)
+  }
+}
+
+// 複数のJSONドキュメントをインポート
+const importMultipleDocuments = (event) => {
+  const file = event.target.files[0]
+  if (!file) return
+  
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result)
+      if (!Array.isArray(data)) {
+        alert('無効なドキュメント形式です。複数ドキュメントの配列が必要です。')
+        return
+      }
+      
+      let importedCount = 0
+      
+      data.forEach(doc => {
+        if (doc.meta && doc.content) {
+          const id = doc.id || Date.now().toString() + Math.random().toString(36).substr(2, 5)
+          localStorage.setItem(`document_meta_${id}`, JSON.stringify({
+            ...doc.meta,
+            importedAt: new Date().toISOString()
+          }))
+          localStorage.setItem(`document_content_${id}`, doc.content)
+          importedCount++
+        }
+      })
+      
+      alert(`${importedCount}件のドキュメントをインポートしました`)
+      loadDocuments()
+    } catch (e) {
+      alert('ドキュメントの読み込み中にエラーが発生しました: ' + e.message)
+    }
+  }
+  reader.readAsText(file)
+}
+
 onMounted(() => {
   loadDocuments()
   loadGroups()
@@ -108,10 +233,22 @@ onMounted(() => {
   <div class="home">
     <h1>Martion - Markdown Editor</h1>
     
-    <div class="actions">
+    <div class="top-actions">
       <button @click="createNewDocument" class="create-btn">
         <span class="icon">+</span> 新規ドキュメント作成
       </button>
+      
+      <div class="import-export">
+        <label class="import-btn">
+          <input type="file" accept=".json" @change="importDocument" class="hidden-input">
+          ドキュメントをインポート
+        </label>
+        <button @click="exportAllDocuments" class="export-btn">すべてエクスポート</button>
+        <label class="import-btn">
+          <input type="file" accept=".json" @change="importMultipleDocuments" class="hidden-input">
+          複数インポート
+        </label>
+      </div>
     </div>
     
     <div class="filters">
@@ -161,12 +298,20 @@ onMounted(() => {
             {{ tag }}
           </span>
         </div>
-        <button 
-          @click="deleteDocument(doc.id, $event)"
-          class="delete-btn"
-        >
-          削除
-        </button>
+        <div class="doc-actions">
+          <button 
+            @click="exportDocument(doc.id, $event)"
+            class="export-doc-btn"
+          >
+            エクスポート
+          </button>
+          <button 
+            @click="deleteDocument(doc.id, $event)"
+            class="delete-btn"
+          >
+            削除
+          </button>
+        </div>
       </div>
       
       <div v-if="filteredDocuments.length === 0" class="no-documents">
@@ -188,9 +333,9 @@ h1 {
   margin-bottom: 30px;
 }
 
-.actions {
+.top-actions {
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
   margin-bottom: 30px;
 }
 
@@ -214,6 +359,30 @@ h1 {
 .icon {
   font-size: 18px;
   margin-right: 8px;
+}
+
+.import-export {
+  display: flex;
+  gap: 10px;
+}
+
+.import-btn, .export-btn {
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.3s;
+}
+
+.import-btn:hover, .export-btn:hover {
+  background-color: #0b7dda;
+}
+
+.hidden-input {
+  display: none;
 }
 
 .filters {
@@ -275,6 +444,7 @@ h1 {
   flex-wrap: wrap;
   gap: 5px;
   margin-top: 10px;
+  margin-bottom: 40px;
 }
 
 .tag {
@@ -285,21 +455,35 @@ h1 {
   font-size: 12px;
 }
 
-.delete-btn {
+.doc-actions {
   position: absolute;
-  top: 10px;
+  bottom: 10px;
   right: 10px;
-  background-color: #f44336;
-  color: white;
+  display: flex;
+  gap: 5px;
+}
+
+.delete-btn, .export-doc-btn {
   border: none;
   border-radius: 4px;
   padding: 5px 10px;
   cursor: pointer;
-  opacity: 0;
+  font-size: 12px;
+  opacity: 0.8;
   transition: opacity 0.3s;
 }
 
-.document-item:hover .delete-btn {
+.export-doc-btn {
+  background-color: #2196F3;
+  color: white;
+}
+
+.delete-btn {
+  background-color: #f44336;
+  color: white;
+}
+
+.document-item:hover .delete-btn, .document-item:hover .export-doc-btn {
   opacity: 1;
 }
 
